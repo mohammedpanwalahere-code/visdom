@@ -671,6 +671,23 @@ def pytorch_wrap(f):
     return wrapped_f
 
 
+def _plain_value(value, what="value"):
+    """Turn a one-element tensor or numpy value into a plain Python value.
+
+    Experiment values go straight to ``json.dumps``, which cannot encode a
+    tensor or a numpy scalar. Anything else is returned unchanged.
+    """
+    if not isinstance(value, list):
+        value = _to_numpy(value)    
+    if isinstance(value, (np.ndarray, np.generic)):
+        if value.size != 1:
+            raise ValueError(
+                "{} must be a single value, got {} values".format(what, value.size)
+            )
+        return value.item()
+    return value
+
+
 def _binary_clf_curve(y_true, y_score, pos_label=1):
     """Compute true/false positives per distinct score threshold."""
     y_true = np.asarray(y_true)
@@ -1565,6 +1582,16 @@ class Visdom(object):
             raise TypeError("params must be a dict of {name: value}")
         if tags is not None and not isinstance(tags, dict):
             raise TypeError("tags must be a dict of {name: value}")
+        if params is not None:
+            params = {
+                name: _plain_value(value, "param '{}'".format(name))
+                for name, value in params.items()
+            }   
+        if tags is not None:
+            tags = {
+                name: _plain_value(value, "tag '{}'".format(name))
+                for name, value in tags.items()
+            }
         return self._experiment_send(
             {
                 "action": "log",
@@ -1585,6 +1612,11 @@ class Visdom(object):
         """
         if not isinstance(metrics, dict) or not metrics:
             raise TypeError("metrics must be a non-empty dict of {name: value}")
+        metrics = {
+            name: _plain_value(value, "metric '{}'".format(name))
+            for name, value in metrics.items()
+        }
+        step = _plain_value(step, "step")
         return self._experiment_send(
             {"action": "metrics", "metrics": metrics, "step": step}, env
         )
